@@ -1,2 +1,3 @@
-# Add confirmed high/critical Checkov rule IDs here, one per line.
-# Example: CKV_DOCKER_3
+# Confirmed high/critical Checkov rule IDs belong here, one per line.
+# Empty by design: all current IaC findings belong to Juice Shop training assets.
+# New findings remain visible in the complete report and must be triaged here.

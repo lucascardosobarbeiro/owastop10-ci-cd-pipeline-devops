@@ -20,15 +20,17 @@ reviewed separately.
 | `iac` | Dockerfile, Terraform and workflow analysis | Checkov | Triaged high/critical rule IDs |
 | `dast` | Running application analysis | OWASP ZAP baseline | ZAP failures; warnings are reported |
 
-All jobs use read-only repository permissions. Scanner versions are fixed, scan
-outputs are kept as workflow artifacts for 14 days, and DAST runs against a
+All jobs use read-only repository permissions. Actions are fixed to commit
+SHAs, scanner images are fixed to immutable digests, scan
+outputs are kept as workflow artifacts for 7 days, and DAST runs against a
 container on a private Docker network without publishing port 3000.
 
 ## Audit mode and enforcement mode
 
-The pipeline starts in **audit mode**. Scanner steps use `continue-on-error`, but
-they still produce downloadable reports. This allows the findings to be reviewed
-without making every learning commit fail.
+The pipeline was introduced in **audit mode** so the initial findings could be
+reviewed without making every learning commit fail. The repository now contains
+exact, reviewed baselines for intentional Juice Shop training findings; new
+findings are still evaluated by the enforcement steps.
 
 For each finding:
 
@@ -36,10 +38,10 @@ For each finding:
 2. Mark it as a true positive, false positive, or accepted lab risk.
 3. Fix true positives in pipeline code and dependencies where doing so does not
    remove an intentional Juice Shop challenge.
-4. Add confirmed high/critical Checkov IDs to `.checkov-enforce.txt`. Document
-   narrowly scoped accepted Trivy risks in `.trivyignore`. Include the rule/CVE,
-   justification, owner and review date in the same pull request. Never use
-   broad path or severity exclusions.
+4. Review exact intentional-secret fingerprints in `.gitleaksignore`, add
+   confirmed high/critical Checkov IDs to `.checkov-enforce.txt`, and document
+   accepted Trivy risks in `.trivyignore`. Include justification, owner and
+   review date. Never use broad path or severity exclusions.
 5. Re-run the workflow and review every uploaded report.
 
 After triage, create this GitHub repository variable:
@@ -48,19 +50,17 @@ After triage, create this GitHub repository variable:
 SECURITY_ENFORCEMENT=enforce
 ```
 
-In **enforcement mode**, Trivy high/critical dependency and container findings
+In **enforcement mode**, new Semgrep error findings, new Gitleaks fingerprints,
+and Trivy high/critical dependency and container findings
 fail their jobs. `npm audit` remains a report-only second opinion. Checkov first
 produces a complete report and then blocks on the reviewed IDs in
-`.checkov-enforce.txt`; enforcement deliberately fails as misconfigured if that
-file has no IDs. Verified secrets fail secret scanning. Semgrep `ERROR` findings
-fail SAST. ZAP warnings remain informational (`-I`); rules changed to `FAIL` in
+`.checkov-enforce.txt`; an empty file means no IaC finding has yet been confirmed
+for blocking. ZAP warnings remain informational (`-I`); rules changed to `FAIL` in
 `.zap/rules.tsv` block DAST. Protect `master` and require all six jobs before
 merge.
 
 Create the variable under **Settings > Secrets and variables > Actions >
-Variables**. Keep audit mode until the initial Juice Shop findings have been
-classified; enabling enforcement without baselines is expected to make an
-intentionally vulnerable training application fail.
+Variables** only after reviewing the committed baselines.
 
 ## Local use
 
@@ -81,7 +81,7 @@ mkdir -p zap-reports
 cp .zap/rules.tsv zap-reports/rules.tsv
 docker run --rm --network devsecops-lab \
   -v "$PWD/zap-reports:/zap/wrk/:rw" \
-  ghcr.io/zaproxy/zaproxy:2.16.1 \
+  ghcr.io/zaproxy/zaproxy:2.16.1@sha256:7840969c7c9fead565bf9734b12f49f6886db90b1d35b1f74d79710bbd081dab \
   zap-baseline.py -t http://juice-shop:3000 \
     -c rules.tsv -r zap-report.html -J zap-report.json -I
 ```

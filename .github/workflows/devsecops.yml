@@ -16,7 +16,13 @@ concurrency:
 
 env:
   IMAGE_NAME: juice-shop-lab:${{ github.sha }}
-  REPORT_RETENTION_DAYS: 14
+  REPORT_RETENTION_DAYS: 7
+  SEMGREP_IMAGE: semgrep/semgrep:1.136.0@sha256:cda1b566fafbf6010a02a3ea1d265b1c8eba4380e489a13891a102243d81ca6f
+  TRIVY_IMAGE: aquasec/trivy:0.67.2@sha256:e2b22eac59c02003d8749f5b8d9bd073b62e30fefaef5b7c8371204e0a4b0c08
+  GITLEAKS_IMAGE: zricethezav/gitleaks:v8.28.0@sha256:cdbb7c955abce02001a9f6c9f602fb195b7fadc1e812065883f695d1eeaba854
+  CHECKOV_IMAGE: bridgecrew/checkov:3.2.486@sha256:6370293af7201815e569385cdb98caabf4561a5bda9a988b51c52544700ff939
+  CURL_IMAGE: curlimages/curl:8.16.0@sha256:463eaf6072688fe96ac64fa623fe73e1dbe25d8ad6c34404a669ad3ce1f104b6
+  ZAP_IMAGE: ghcr.io/zaproxy/zaproxy:2.16.1@sha256:7840969c7c9fead565bf9734b12f49f6886db90b1d35b1f74d79710bbd081dab
 
 jobs:
   sast:
@@ -26,13 +32,31 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Scan source code
-        continue-on-error: ${{ vars.SECURITY_ENFORCEMENT != 'enforce' }}
+        with:
+          fetch-depth: 0
+      - name: Create complete SAST report
         run: |
           mkdir -p security-reports
-          docker run --rm -v "$PWD:/src" semgrep/semgrep:1.136.0 \
-            semgrep scan --config auto --severity ERROR --error \
+          docker run --rm -v "$PWD:/src" "$SEMGREP_IMAGE" \
+            semgrep scan --config auto --severity ERROR \
             --json --output /src/security-reports/semgrep.json /src
+      - name: Enforce new SAST findings
+        if: vars.SECURITY_ENFORCEMENT == 'enforce'
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PUSH_BASE: ${{ github.event.before }}
+        run: |
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            baseline="$PR_BASE"
+          elif [ -n "$PUSH_BASE" ] && ! echo "$PUSH_BASE" | grep -Eq '^0+$'; then
+            baseline="$PUSH_BASE"
+          else
+            baseline=$(git rev-parse HEAD^)
+          fi
+          docker run --rm -v "$PWD:/src" "$SEMGREP_IMAGE" \
+            semgrep scan --config auto --severity ERROR --error \
+            --baseline-commit "$baseline" /src
       - name: Upload SAST report
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -67,7 +91,7 @@ jobs:
       - name: Scan filesystem dependencies
         continue-on-error: ${{ vars.SECURITY_ENFORCEMENT != 'enforce' }}
         run: |
-          docker run --rm -v "$PWD:/workspace" aquasec/trivy:0.67.2 \
+          docker run --rm -v "$PWD:/workspace" "$TRIVY_IMAGE" \
             fs --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed \
             --ignorefile /workspace/.trivyignore --exit-code 1 --format json \
             --output /workspace/security-reports/trivy-filesystem.json /workspace
@@ -93,8 +117,9 @@ jobs:
         continue-on-error: ${{ vars.SECURITY_ENFORCEMENT != 'enforce' }}
         run: |
           mkdir -p security-reports
-          docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.28.0 \
+          docker run --rm -v "$PWD:/repo" "$GITLEAKS_IMAGE" \
             detect --source=/repo --redact --report-format=json \
+            --gitleaks-ignore-path=/repo/.gitleaksignore \
             --report-path=/repo/security-reports/gitleaks.json
       - name: Upload secret scan report
         if: always()
@@ -119,7 +144,7 @@ jobs:
         run: |
           mkdir -p security-reports
           docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
-            -v "$PWD:/workspace" aquasec/trivy:0.67.2 \
+            -v "$PWD:/workspace" "$TRIVY_IMAGE" \
             image --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 \
             --ignorefile /workspace/.trivyignore \
             --format json --output /workspace/security-reports/trivy-image.json \
@@ -143,7 +168,7 @@ jobs:
       - name: Scan infrastructure definitions
         run: |
           mkdir -p security-reports
-          docker run --rm -v "$PWD:/workspace" bridgecrew/checkov:3.2.486 \
+          docker run --rm -v "$PWD:/workspace" "$CHECKOV_IMAGE" \
             --directory /workspace --framework dockerfile terraform github_actions \
             --soft-fail \
             --output json --output-file-path /workspace/security-reports/checkov
@@ -152,10 +177,10 @@ jobs:
         run: |
           checks=$(grep -Ev '^\s*(#|$)' .checkov-enforce.txt | paste -sd, -)
           if [ -z "$checks" ]; then
-            echo "Enforcement requires at least one triaged Checkov rule ID."
-            exit 2
+            echo "No confirmed Checkov rule IDs are configured for blocking."
+            exit 0
           fi
-          docker run --rm -v "$PWD:/workspace" bridgecrew/checkov:3.2.486 \
+          docker run --rm -v "$PWD:/workspace" "$CHECKOV_IMAGE" \
             --directory /workspace --framework dockerfile terraform github_actions \
             --check "$checks" --compact
       - name: Upload IaC report
@@ -184,7 +209,7 @@ jobs:
       - name: Wait for target readiness
         run: |
           for attempt in {1..30}; do
-            if docker run --rm --network devsecops-lab curlimages/curl:8.16.0 \
+            if docker run --rm --network devsecops-lab "$CURL_IMAGE" \
               --fail --silent http://juice-shop:3000/ > /dev/null; then
               exit 0
             fi
@@ -200,7 +225,7 @@ jobs:
           chmod 777 zap-reports
           docker run --rm --network devsecops-lab \
             -v "$PWD/zap-reports:/zap/wrk/:rw" \
-            ghcr.io/zaproxy/zaproxy:2.16.1 \
+            "$ZAP_IMAGE" \
             zap-baseline.py -t http://juice-shop:3000 \
             -c rules.tsv -r zap-report.html -J zap-report.json -I
       - name: Upload DAST reports

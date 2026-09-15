@@ -48,26 +48,27 @@ SAST -> SCA -> Secret Scanning -> Container -> IaC -> Ephemeral Deploy -> DAST
 | `iac` | Infrastructure as Code analysis | Checkov | Full report and reviewed rule-ID gate |
 | `dast` | Dynamic application security testing | OWASP ZAP | HTML and JSON reports from an isolated target |
 
-Every job has read-only repository permissions. Tool versions are fixed, and
-reports are retained as GitHub Actions artifacts for 14 days. The DAST job does
+Every job has read-only repository permissions. Actions are fixed to commit
+SHAs, scanner images are fixed to immutable digests, and
+reports are retained as GitHub Actions artifacts for 7 days. The DAST job does
 not publish the Juice Shop port: both the application and ZAP run on a private
 Docker network created inside the temporary GitHub-hosted runner.
 
 ### Audit first, enforce after triage
 
-The pipeline starts in **audit mode**. Expected scanner failures are visible in
-the job annotations and reports without failing the overall workflow. This is
-important because Juice Shop deliberately contains vulnerable code and test
-material.
+The pipeline was introduced in **audit mode** so the initial findings could be
+classified. Reviewed fingerprints and CVE baselines preserve intentional Juice
+Shop training material while enforcement blocks new findings.
 
 After reviewing the initial reports:
 
 1. classify each finding as confirmed, false positive, or accepted lab risk;
 2. remediate unintended vulnerabilities in the pipeline or dependencies;
-3. place only reviewed Trivy exceptions in `.trivyignore`;
-4. add confirmed high/critical Checkov rule IDs to `.checkov-enforce.txt`;
-5. configure reviewed ZAP rules as `FAIL` in `.zap/rules.tsv`;
-6. set the GitHub repository variable `SECURITY_ENFORCEMENT=enforce`.
+3. review the exact Gitleaks fingerprints in `.gitleaksignore`;
+4. place only reviewed Trivy exceptions in `.trivyignore`;
+5. add confirmed high/critical Checkov rule IDs to `.checkov-enforce.txt`;
+6. configure reviewed ZAP rules as `FAIL` in `.zap/rules.tsv`;
+7. set the GitHub repository variable `SECURITY_ENFORCEMENT=enforce`.
 
 Enforcement mode makes the relevant security steps fail when a configured gate
 is crossed. The `master` branch can then be protected by requiring all six
