@@ -223,10 +223,9 @@ vulnerabilities:
 secrets:
   - id: private-key
     paths:
-      - "juice-shop/build/lib/insecurity.js"
-      - "juice-shop/infrastructure/terraform/networking.tf"
-      - "juice-shop/lib/insecurity.ts"
-      - "juice-shop/terraform/networking.tf"
+      - "/juice-shop/build/lib/insecurity.js"
+      - "/juice-shop/infrastructure/terraform/networking.tf"
+      - "/juice-shop/lib/insecurity.ts"
+      - "/juice-shop/terraform/networking.tf"
     expired_at: 2026-12-15
     statement: "Public fictional training keys shipped by OWASP Juice Shop; no live credential is stored."
-
