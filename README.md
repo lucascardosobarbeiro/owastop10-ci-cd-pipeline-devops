@@ -1,18 +1,106 @@
 # ![Juice Shop Logo](https://raw.githubusercontent.com/juice-shop/juice-shop/master/frontend/src/assets/public/images/JuiceShop_Logo_100px.png) OWASP Juice Shop
 
-> **DevSecOps lab safety:** This application is intentionally vulnerable. Run it
-> only on localhost or an isolated network. Never deploy it to production or
-> expose it directly to the internet.
+## DevSecOps CI/CD Lab
 
-This fork adds separate GitHub Actions jobs for SAST, dependency analysis,
-secret detection, container scanning, Infrastructure as Code scanning, and
-isolated DAST. Reports are available as workflow artifacts. See the
-[DevSecOps pipeline guide](docs/DEVSECOPS_PIPELINE.md) for architecture, local
-commands, triage, and enforcement instructions.
+[![DevSecOps security pipeline](https://github.com/lucascardosobarbeiro/owastop10-ci-cd-pipeline-devops/actions/workflows/devsecops.yml/badge.svg)](https://github.com/lucascardosobarbeiro/owastop10-ci-cd-pipeline-devops/actions/workflows/devsecops.yml)
 
-The workflow begins in audit mode. Once findings have been classified, set the
-repository variable `SECURITY_ENFORCEMENT` to `enforce` and require the six
-security jobs in branch protection.
+This repository is a hands-on DevSecOps laboratory built on top of
+[OWASP Juice Shop](https://owasp.org/www-project-juice-shop/). Its purpose is to
+demonstrate how security controls can be integrated into a CI/CD workflow,
+starting with visibility and progressing toward risk-based enforcement.
+
+Juice Shop is intentionally vulnerable. The goal of this lab is not to claim
+that the application is secure. It is to practice detecting vulnerabilities,
+reviewing evidence, separating true positives from accepted training risks,
+documenting exceptions, and preventing confirmed high-impact issues from being
+introduced unnoticed.
+
+> **Safety warning:** Run this application only on localhost or inside an
+> isolated laboratory network. Never deploy it to production or expose port
+> `3000` publicly.
+
+### Learning objectives
+
+By completing this lab, you can practice how to:
+
+- integrate multiple security scanners into GitHub Actions;
+- keep each security control in an independent and observable job;
+- collect scanner output as downloadable build artifacts;
+- scan source code, dependencies, secrets, containers and IaC;
+- run DAST against an ephemeral target on a private Docker network;
+- triage findings before enabling blocking controls;
+- apply narrow, reviewed exceptions instead of hiding whole classes of risk.
+
+### Security pipeline
+
+The workflow follows the recommended DevSecOps learning sequence:
+
+```text
+SAST -> SCA -> Secret Scanning -> Container -> IaC -> Ephemeral Deploy -> DAST
+```
+
+| Job | Security control | Tool | Result |
+| --- | --- | --- | --- |
+| `sast` | Static application security testing | Semgrep | JSON report and error-level findings |
+| `sca` | Software composition analysis | npm audit and Trivy | Dependency reports; high/critical Trivy gate |
+| `secrets` | Credential detection | Gitleaks | Redacted secret report |
+| `container` | Container image analysis | Trivy | High/critical fixed-vulnerability gate |
+| `iac` | Infrastructure as Code analysis | Checkov | Full report and reviewed rule-ID gate |
+| `dast` | Dynamic application security testing | OWASP ZAP | HTML and JSON reports from an isolated target |
+
+Every job has read-only repository permissions. Tool versions are fixed, and
+reports are retained as GitHub Actions artifacts for 14 days. The DAST job does
+not publish the Juice Shop port: both the application and ZAP run on a private
+Docker network created inside the temporary GitHub-hosted runner.
+
+### Audit first, enforce after triage
+
+The pipeline starts in **audit mode**. Expected scanner failures are visible in
+the job annotations and reports without failing the overall workflow. This is
+important because Juice Shop deliberately contains vulnerable code and test
+material.
+
+After reviewing the initial reports:
+
+1. classify each finding as confirmed, false positive, or accepted lab risk;
+2. remediate unintended vulnerabilities in the pipeline or dependencies;
+3. place only reviewed Trivy exceptions in `.trivyignore`;
+4. add confirmed high/critical Checkov rule IDs to `.checkov-enforce.txt`;
+5. configure reviewed ZAP rules as `FAIL` in `.zap/rules.tsv`;
+6. set the GitHub repository variable `SECURITY_ENFORCEMENT=enforce`.
+
+Enforcement mode makes the relevant security steps fail when a configured gate
+is crossed. The `master` branch can then be protected by requiring all six
+security jobs before merge.
+
+### Run the lab locally
+
+```bash
+docker network create devsecops-lab
+docker build -t juice-shop-lab .
+docker run --rm --name juice-shop --network devsecops-lab \
+  -p 127.0.0.1:3000:3000 juice-shop-lab
+```
+
+Open <http://localhost:3000>. Binding the port to `127.0.0.1` keeps the service
+local to the machine. When finished, stop the container and remove the network:
+
+```bash
+docker rm -f juice-shop
+docker network rm devsecops-lab
+```
+
+See the [complete DevSecOps pipeline guide](docs/DEVSECOPS_PIPELINE.md) for local
+scanner commands, report handling, triage guidance and enforcement details.
+
+### Project scope and attribution
+
+This repository preserves the original OWASP Juice Shop application and its
+license. The custom work in this fork focuses on CI/CD security orchestration,
+safe lab execution and documentation. The original project documentation
+continues below.
+
+---
 
 [![OWASP Flagship](https://img.shields.io/badge/owasp-flagship%20project-48A646.svg)](https://owasp.org/projects/#sec-flagships)
 [![GitHub release](https://img.shields.io/github/release/juice-shop/juice-shop.svg)](https://github.com/juice-shop/juice-shop/releases/latest)
