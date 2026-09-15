@@ -1,5 +1,19 @@
 # ![Juice Shop Logo](https://raw.githubusercontent.com/juice-shop/juice-shop/master/frontend/src/assets/public/images/JuiceShop_Logo_100px.png) OWASP Juice Shop
 
+> **DevSecOps lab safety:** This application is intentionally vulnerable. Run it
+> only on localhost or an isolated network. Never deploy it to production or
+> expose it directly to the internet.
+
+This fork adds separate GitHub Actions jobs for SAST, dependency analysis,
+secret detection, container scanning, Infrastructure as Code scanning, and
+isolated DAST. Reports are available as workflow artifacts. See the
+[DevSecOps pipeline guide](docs/DEVSECOPS_PIPELINE.md) for architecture, local
+commands, triage, and enforcement instructions.
+
+The workflow begins in audit mode. Once findings have been classified, set the
+repository variable `SECURITY_ENFORCEMENT` to `enforce` and require the six
+security jobs in branch protection.
+
 [![OWASP Flagship](https://img.shields.io/badge/owasp-flagship%20project-48A646.svg)](https://owasp.org/projects/#sec-flagships)
 [![GitHub release](https://img.shields.io/github/release/juice-shop/juice-shop.svg)](https://github.com/juice-shop/juice-shop/releases/latest)
 [![Twitter Follow](https://img.shields.io/twitter/follow/owasp_juiceshop.svg?style=social&label=Follow)](https://twitter.com/owasp_juiceshop)

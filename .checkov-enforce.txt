@@ -1,0 +1,2 @@
+# Add confirmed high/critical Checkov rule IDs here, one per line.
+# Example: CKV_DOCKER_3

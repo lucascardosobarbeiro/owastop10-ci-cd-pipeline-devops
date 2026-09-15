@@ -71,3 +71,7 @@ config/*.yml
 # Misc
 .playwright-mcp/
 cypress/screenshots/
+
+# Local security scanner output
+/security-reports/
+/zap-reports/

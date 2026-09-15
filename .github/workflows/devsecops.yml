@@ -1,0 +1,218 @@
+name: DevSecOps security pipeline
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: devsecops-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE_NAME: juice-shop-lab:${{ github.sha }}
+  REPORT_RETENTION_DAYS: 14
+
+jobs:
+  sast:
+    name: SAST - Semgrep
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Scan source code
+        continue-on-error: ${{ vars.SECURITY_ENFORCEMENT != 'enforce' }}
+        run: |
+          mkdir -p security-reports
+          docker run --rm -v "$PWD:/src" semgrep/semgrep:1.136.0 \
+            semgrep scan --config auto --severity ERROR --error \
+            --json --output /src/security-reports/semgrep.json /src
+      - name: Upload SAST report
+        if: always()
+        uses: actions/upload-artifact@6f51ac03b9356f520e9adb1b1b7802705f340c2b # v4.5.0
+        with:
+          name: semgrep-report
+          path: security-reports/semgrep.json
+          if-no-files-found: warn
+          retention-days: ${{ env.REPORT_RETENTION_DAYS }}
+
+  sca:
+    name: SCA - npm audit and Trivy filesystem
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Create report directory
+        run: mkdir -p security-reports
+      - name: Audit production dependencies
+        # npm audit is retained as a second opinion; Trivy owns the severity gate.
+        continue-on-error: true
+        run: |
+          root_exit=0
+          frontend_exit=0
+          npm audit --omit=dev --audit-level=high --json \
+            > security-reports/npm-audit-root.json || root_exit=$?
+          npm audit --prefix frontend --omit=dev --audit-level=high --json \
+            > security-reports/npm-audit-frontend.json || frontend_exit=$?
+          if [ "$root_exit" -ne 0 ] || [ "$frontend_exit" -ne 0 ]; then
+            exit 1
+          fi
+      - name: Scan filesystem dependencies
+        continue-on-error: ${{ vars.SECURITY_ENFORCEMENT != 'enforce' }}
+        run: |
+          docker run --rm -v "$PWD:/workspace" aquasec/trivy:0.67.2 \
+            fs --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed \
+            --ignorefile /workspace/.trivyignore --exit-code 1 --format json \
+            --output /workspace/security-reports/trivy-filesystem.json /workspace
+      - name: Upload SCA reports
+        if: always()
+        uses: actions/upload-artifact@6f51ac03b9356f520e9adb1b1b7802705f340c2b # v4.5.0
+        with:
+          name: sca-reports
+          path: security-reports/
+          if-no-files-found: warn
+          retention-days: ${{ env.REPORT_RETENTION_DAYS }}
+
+  secrets:
+    name: Secret scanning - Gitleaks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out complete history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Scan repository history
+        continue-on-error: ${{ vars.SECURITY_ENFORCEMENT != 'enforce' }}
+        run: |
+          mkdir -p security-reports
+          docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.28.0 \
+            detect --source=/repo --redact --report-format=json \
+            --report-path=/repo/security-reports/gitleaks.json
+      - name: Upload secret scan report
+        if: always()
+        uses: actions/upload-artifact@6f51ac03b9356f520e9adb1b1b7802705f340c2b # v4.5.0
+        with:
+          name: gitleaks-report
+          path: security-reports/gitleaks.json
+          if-no-files-found: warn
+          retention-days: ${{ env.REPORT_RETENTION_DAYS }}
+
+  container:
+    name: Container scanning - Trivy
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Build lab image
+        run: docker build --tag "$IMAGE_NAME" .
+      - name: Scan image
+        continue-on-error: ${{ vars.SECURITY_ENFORCEMENT != 'enforce' }}
+        run: |
+          mkdir -p security-reports
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "$PWD:/workspace" aquasec/trivy:0.67.2 \
+            image --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 \
+            --ignorefile /workspace/.trivyignore \
+            --format json --output /workspace/security-reports/trivy-image.json \
+            "$IMAGE_NAME"
+      - name: Upload container report
+        if: always()
+        uses: actions/upload-artifact@6f51ac03b9356f520e9adb1b1b7802705f340c2b # v4.5.0
+        with:
+          name: container-report
+          path: security-reports/trivy-image.json
+          if-no-files-found: warn
+          retention-days: ${{ env.REPORT_RETENTION_DAYS }}
+
+  iac:
+    name: IaC scanning - Checkov
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Scan infrastructure definitions
+        run: |
+          mkdir -p security-reports
+          docker run --rm -v "$PWD:/workspace" bridgecrew/checkov:3.2.486 \
+            --directory /workspace --framework dockerfile terraform github_actions \
+            --soft-fail \
+            --output json --output-file-path /workspace/security-reports/checkov
+      - name: Enforce triaged IaC findings
+        if: vars.SECURITY_ENFORCEMENT == 'enforce'
+        run: |
+          checks=$(grep -Ev '^\s*(#|$)' .checkov-enforce.txt | paste -sd, -)
+          if [ -z "$checks" ]; then
+            echo "Enforcement requires at least one triaged Checkov rule ID."
+            exit 2
+          fi
+          docker run --rm -v "$PWD:/workspace" bridgecrew/checkov:3.2.486 \
+            --directory /workspace --framework dockerfile terraform github_actions \
+            --check "$checks" --compact
+      - name: Upload IaC report
+        if: always()
+        uses: actions/upload-artifact@6f51ac03b9356f520e9adb1b1b7802705f340c2b # v4.5.0
+        with:
+          name: checkov-report
+          path: security-reports/checkov/
+          if-no-files-found: warn
+          retention-days: ${{ env.REPORT_RETENTION_DAYS }}
+
+  dast:
+    name: DAST - OWASP ZAP
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: [sast, sca, secrets, container, iac]
+    if: always() && !cancelled()
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Build and start isolated target
+        run: |
+          docker network create devsecops-lab
+          docker build --tag "$IMAGE_NAME" .
+          docker run --detach --name juice-shop --network devsecops-lab "$IMAGE_NAME"
+      - name: Wait for target readiness
+        run: |
+          for attempt in {1..30}; do
+            if docker run --rm --network devsecops-lab curlimages/curl:8.16.0 \
+              --fail --silent http://juice-shop:3000/ > /dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs juice-shop
+          exit 1
+      - name: Run ZAP baseline scan
+        continue-on-error: ${{ vars.SECURITY_ENFORCEMENT != 'enforce' }}
+        run: |
+          mkdir -p zap-reports
+          cp .zap/rules.tsv zap-reports/rules.tsv
+          chmod 777 zap-reports
+          docker run --rm --network devsecops-lab \
+            -v "$PWD/zap-reports:/zap/wrk/:rw" \
+            ghcr.io/zaproxy/zaproxy:2.16.1 \
+            zap-baseline.py -t http://juice-shop:3000 \
+            -c rules.tsv -r zap-report.html -J zap-report.json -I
+      - name: Upload DAST reports
+        if: always()
+        uses: actions/upload-artifact@6f51ac03b9356f520e9adb1b1b7802705f340c2b # v4.5.0
+        with:
+          name: zap-reports
+          path: zap-reports/
+          if-no-files-found: warn
+          retention-days: ${{ env.REPORT_RETENTION_DAYS }}
+      - name: Stop isolated target
+        if: always()
+        run: |
+          docker rm --force juice-shop 2>/dev/null || true
+          docker network rm devsecops-lab 2>/dev/null || true
