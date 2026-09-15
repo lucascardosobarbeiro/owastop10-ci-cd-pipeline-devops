@@ -93,7 +93,7 @@ jobs:
         run: |
           docker run --rm -v "$PWD:/workspace" "$TRIVY_IMAGE" \
             fs --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed \
-            --ignorefile /workspace/.trivyignore --exit-code 1 --format json \
+            --ignorefile /workspace/.trivyignore.yaml --exit-code 1 --format json \
             --output /workspace/security-reports/trivy-filesystem.json /workspace
       - name: Upload SCA reports
         if: always()
@@ -146,7 +146,7 @@ jobs:
           docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
             -v "$PWD:/workspace" "$TRIVY_IMAGE" \
             image --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 \
-            --ignorefile /workspace/.trivyignore \
+            --ignorefile /workspace/.trivyignore.yaml \
             --format json --output /workspace/security-reports/trivy-image.json \
             "$IMAGE_NAME"
       - name: Upload container report

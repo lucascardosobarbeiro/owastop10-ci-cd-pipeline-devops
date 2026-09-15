@@ -65,7 +65,7 @@ After reviewing the initial reports:
 1. classify each finding as confirmed, false positive, or accepted lab risk;
 2. remediate unintended vulnerabilities in the pipeline or dependencies;
 3. review the exact Gitleaks fingerprints in `.gitleaksignore`;
-4. place only reviewed Trivy exceptions in `.trivyignore`;
+4. place only reviewed, package/file-scoped Trivy exceptions in `.trivyignore.yaml`;
 5. add confirmed high/critical Checkov rule IDs to `.checkov-enforce.txt`;
 6. configure reviewed ZAP rules as `FAIL` in `.zap/rules.tsv`;
 7. set the GitHub repository variable `SECURITY_ENFORCEMENT=enforce`.

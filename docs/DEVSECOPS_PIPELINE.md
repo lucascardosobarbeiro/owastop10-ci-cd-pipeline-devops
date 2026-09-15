@@ -40,8 +40,9 @@ For each finding:
    remove an intentional Juice Shop challenge.
 4. Review exact intentional-secret fingerprints in `.gitleaksignore`, add
    confirmed high/critical Checkov IDs to `.checkov-enforce.txt`, and document
-   accepted Trivy risks in `.trivyignore`. Include justification, owner and
-   review date. Never use broad path or severity exclusions.
+   accepted Trivy risks in `.trivyignore.yaml`. Scope every exception to its
+   exact package URL or file, include an expiry and justification, and never use
+   broad path or severity exclusions.
 5. Re-run the workflow and review every uploaded report.
 
 After triage, create this GitHub repository variable:
