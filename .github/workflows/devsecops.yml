@@ -35,7 +35,7 @@ jobs:
             --json --output /src/security-reports/semgrep.json /src
       - name: Upload SAST report
         if: always()
-        uses: actions/upload-artifact@6f51ac03b9356f520e9adb1b1b7802705f340c2b # v4.5.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: semgrep-report
           path: security-reports/semgrep.json
@@ -73,7 +73,7 @@ jobs:
             --output /workspace/security-reports/trivy-filesystem.json /workspace
       - name: Upload SCA reports
         if: always()
-        uses: actions/upload-artifact@6f51ac03b9356f520e9adb1b1b7802705f340c2b # v4.5.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: sca-reports
           path: security-reports/
@@ -98,7 +98,7 @@ jobs:
             --report-path=/repo/security-reports/gitleaks.json
       - name: Upload secret scan report
         if: always()
-        uses: actions/upload-artifact@6f51ac03b9356f520e9adb1b1b7802705f340c2b # v4.5.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: gitleaks-report
           path: security-reports/gitleaks.json
@@ -126,7 +126,7 @@ jobs:
             "$IMAGE_NAME"
       - name: Upload container report
         if: always()
-        uses: actions/upload-artifact@6f51ac03b9356f520e9adb1b1b7802705f340c2b # v4.5.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: container-report
           path: security-reports/trivy-image.json
@@ -160,7 +160,7 @@ jobs:
             --check "$checks" --compact
       - name: Upload IaC report
         if: always()
-        uses: actions/upload-artifact@6f51ac03b9356f520e9adb1b1b7802705f340c2b # v4.5.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: checkov-report
           path: security-reports/checkov/
@@ -205,7 +205,7 @@ jobs:
             -c rules.tsv -r zap-report.html -J zap-report.json -I
       - name: Upload DAST reports
         if: always()
-        uses: actions/upload-artifact@6f51ac03b9356f520e9adb1b1b7802705f340c2b # v4.5.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: zap-reports
           path: zap-reports/
